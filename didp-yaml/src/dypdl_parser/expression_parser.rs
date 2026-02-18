@@ -8,6 +8,7 @@ mod condition_parser;
 mod continuous_parser;
 mod continuous_vector_parser;
 mod element_parser;
+mod element_table_parser;
 mod integer_parser;
 mod integer_vector_parser;
 mod numeric_table_parser;

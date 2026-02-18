@@ -1,3 +1,5 @@
+use crate::dypdl_parser::expression_parser::element_table_parser;
+
 use super::argument_parser::{parse_argument, parse_multiple_arguments};
 use super::condition_parser;
 use super::util::ParseErr;
@@ -25,7 +27,7 @@ pub fn parse_expression<'a>(
             let (name, rest) = rest
                 .split_first()
                 .ok_or_else(|| ParseErr::new("could not get token".to_string()))?;
-            if let Some((expression, rest)) = parse_table_expression(
+            if let Some((expression, rest)) = element_table_parser::parse_expression(
                 name,
                 rest,
                 metadata,
@@ -1131,7 +1133,7 @@ mod tests {
         let (expression, rest) = result.unwrap();
         assert_eq!(
             expression,
-            ElementExpression::Table(Box::new(TableExpression::Table1D(
+            ElementExpression::Table(Box::new(ElementTableExpression::Table1D(
                 0,
                 ElementExpression::Constant(0)
             )))

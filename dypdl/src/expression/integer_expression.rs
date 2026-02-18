@@ -424,7 +424,7 @@ impl Table1DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_1d("table", vec![2, 3]).unwrap();
+    /// let table = model.add_table_1d("table", vec![2i32, 3i32]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let variable = model.add_element_variable("variable", object_type, 0).unwrap();
     /// let state = model.target.clone();
@@ -457,7 +457,7 @@ impl Table1DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_1d("table", vec![2, 3]).unwrap();
+    /// let table = model.add_table_1d("table", vec![2i32, 3i32]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
@@ -492,7 +492,7 @@ impl Table1DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_1d("table", vec![2, 3]).unwrap();
+    /// let table = model.add_table_1d("table", vec![2i32, 3i32]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
@@ -527,7 +527,7 @@ impl Table1DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_1d("table", vec![2, 3]).unwrap();
+    /// let table = model.add_table_1d("table", vec![2i32, 3i32]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
@@ -562,7 +562,7 @@ impl Table1DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_1d("table", vec![2, 3]).unwrap();
+    /// let table = model.add_table_1d("table", vec![2i32, 3i32]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
@@ -599,7 +599,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let variable = model.add_element_variable("variable", object_type, 0).unwrap();
     /// let state = model.target.clone();
@@ -634,7 +634,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let x = model.add_set_variable("x", object_type, set).unwrap();
@@ -672,7 +672,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.add_element_variable("x", object_type, 0).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
@@ -710,7 +710,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.create_set(object_type, &[0, 1]).unwrap();
     /// let y = model.add_set_variable("y", object_type, x.clone()).unwrap();
@@ -747,7 +747,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let x = model.add_set_variable("x", object_type, set).unwrap();
@@ -785,7 +785,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.add_element_variable("x", object_type, 0).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
@@ -823,7 +823,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.create_set(object_type, &[0, 1]).unwrap();
     /// let y = model.add_set_variable("y", object_type, x.clone()).unwrap();
@@ -860,7 +860,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let x = model.add_set_variable("x", object_type, set).unwrap();
@@ -897,7 +897,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.add_element_variable("x", object_type, 0).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
@@ -934,7 +934,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.create_set(object_type, &[0, 1]).unwrap();
     /// let y = model.add_set_variable("y", object_type, x.clone()).unwrap();
@@ -971,7 +971,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
     /// let x = model.add_set_variable("x", object_type, set).unwrap();
@@ -1008,7 +1008,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.add_element_variable("x", object_type, 0).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
@@ -1045,7 +1045,7 @@ impl Table2DHandle<Integer> {
     /// use dypdl::prelude::*;
     ///
     /// let mut model = Model::default();
-    /// let table = model.add_table_2d("table", vec![vec![2, 3], vec![4, 5]]).unwrap();
+    /// let table = model.add_table_2d("table", vec![vec![2i32, 3i32], vec![4i32, 5i32]]).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let x = model.create_set(object_type, &[0, 1]).unwrap();
     /// let y = model.add_set_variable("y", object_type, x.clone()).unwrap();
@@ -1087,7 +1087,7 @@ impl Table3DHandle<Integer> {
     /// let mut model = Model::default();
     /// let table = model.add_table_3d(
     ///     "table",
-    ///     vec![vec![vec![2, 3], vec![4, 5]], vec![vec![6, 7], vec![8, 9]]]
+    ///     vec![vec![vec![2i32, 3i32], vec![4i32, 5i32]], vec![vec![6i32, 7i32], vec![8i32, 9i32]]]
     /// ).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let variable = model.add_element_variable("variable", object_type, 0).unwrap();
@@ -1126,7 +1126,7 @@ impl Table3DHandle<Integer> {
     /// let mut model = Model::default();
     /// let table = model.add_table_3d(
     ///     "table",
-    ///     vec![vec![vec![2, 3], vec![4, 5]], vec![vec![6, 7], vec![8, 9]]]
+    ///     vec![vec![vec![2i32, 3i32], vec![4i32, 5i32]], vec![vec![6i32, 7i32], vec![8i32, 9i32]]]
     /// ).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
@@ -1177,7 +1177,7 @@ impl Table3DHandle<Integer> {
     /// let mut model = Model::default();
     /// let table = model.add_table_3d(
     ///     "table",
-    ///     vec![vec![vec![2, 3], vec![4, 5]], vec![vec![6, 7], vec![8, 9]]]
+    ///     vec![vec![vec![2i32, 3i32], vec![4i32, 5i32]], vec![vec![6i32, 7i32], vec![8i32, 9i32]]]
     /// ).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
@@ -1228,7 +1228,7 @@ impl Table3DHandle<Integer> {
     /// let mut model = Model::default();
     /// let table = model.add_table_3d(
     ///     "table",
-    ///     vec![vec![vec![2, 3], vec![4, 5]], vec![vec![6, 7], vec![8, 9]]]
+    ///     vec![vec![vec![2i32, 3i32], vec![4i32, 5i32]], vec![vec![6i32, 7i32], vec![8i32, 9i32]]]
     /// ).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();
@@ -1279,7 +1279,7 @@ impl Table3DHandle<Integer> {
     /// let mut model = Model::default();
     /// let table = model.add_table_3d(
     ///     "table",
-    ///     vec![vec![vec![2, 3], vec![4, 5]], vec![vec![6, 7], vec![8, 9]]]
+    ///     vec![vec![vec![2i32, 3i32], vec![4i32, 5i32]], vec![vec![6i32, 7i32], vec![8i32, 9i32]]]
     /// ).unwrap();
     /// let object_type = model.add_object_type("object", 2).unwrap();
     /// let set = model.create_set(object_type, &[0, 1]).unwrap();

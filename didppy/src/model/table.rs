@@ -37,6 +37,56 @@ impl ElementTable1DPy {
     fn __getitem__(&self, i: ElementUnion) -> ElementExprPy {
         ElementExprPy::from(self.0.element(i))
     }
+
+        /// Takes the maximum of constants in a table over the set of indices.
+    ///
+    /// Parameters
+    /// ----------
+    /// set : SetExpr, SetVar, or SetConst
+    ///     Set of indices.
+    ///
+    /// Returns
+    /// -------
+    /// IntExpr
+    ///     The maximum.
+    ///
+    /// Examples
+    /// --------
+    /// >>> import didppy as dp
+    /// >>> model = dp.Model()
+    /// >>> obj = model.add_object_type(number=2)
+    /// >>> table = model.add_element_table([2, 3])
+    /// >>> var = model.add_set_var(object_type=obj, target=[0, 1])
+    /// >>> table.max(var).eval(model.target_state, model)
+    /// 3
+    fn max(&self, i: SetUnion) -> ElementExprPy {
+        ElementExprPy::from(self.0.max(i))
+    }
+
+    /// Takes the minimum of constants in a table over the set of indices.
+    ///
+    /// Parameters
+    /// ----------
+    /// set : SetExpr, SetVar, or SetConst
+    ///     Set of indices.
+    ///
+    /// Returns
+    /// -------
+    /// IntExpr
+    ///     The minimum.
+    ///
+    /// Examples
+    /// --------
+    /// >>> import didppy as dp
+    /// >>> model = dp.Model()
+    /// >>> obj = model.add_object_type(number=2)
+    /// >>> table = model.add_element_table([2, 3])
+    /// >>> var = model.add_set_var(object_type=obj, target=[0, 1])
+    /// >>> table.min(var).eval(model.target_state, model)
+    /// 2
+    fn min(&self, i: SetUnion) -> ElementExprPy {
+        ElementExprPy::from(self.0.min(i))
+    }
 }
 
 /// 2-dimensional table of element constants.
@@ -2151,7 +2201,7 @@ mod tests {
         assert_eq!(
             t_py.__getitem__(i),
             ElementExprPy::from(ElementExpression::Table(Box::new(
-                TableExpression::Table1D(t.id(), ElementExpression::Constant(0))
+                ElementTableExpression::Table1D(t.id(), ElementExpression::Constant(0))
             )))
         );
     }
@@ -2177,7 +2227,7 @@ mod tests {
         assert_eq!(
             t_py.__getitem__((x, y)),
             ElementExprPy::from(ElementExpression::Table(Box::new(
-                TableExpression::Table2D(
+                ElementTableExpression::Table2D(
                     t.id(),
                     ElementExpression::Constant(0),
                     ElementExpression::Constant(0)
@@ -2208,7 +2258,7 @@ mod tests {
         assert_eq!(
             t_py.__getitem__((x, y, z)),
             ElementExprPy::from(ElementExpression::Table(Box::new(
-                TableExpression::Table3D(
+                ElementTableExpression::Table3D(
                     t.id(),
                     ElementExpression::Constant(0),
                     ElementExpression::Constant(0),
@@ -2242,7 +2292,7 @@ mod tests {
         ];
         assert_eq!(
             t_py.__getitem__(index),
-            ElementExprPy::from(ElementExpression::Table(Box::new(TableExpression::Table(
+            ElementExprPy::from(ElementExpression::Table(Box::new(ElementTableExpression::Table(
                 t.id(),
                 vec![
                     ElementExpression::Constant(0),

@@ -118,6 +118,20 @@ impl ToYamlString for expression::SetReduceOperator {
     }
 }
 
+impl ToYamlString for expression::ElementOperator {
+    fn to_yaml_string(
+        &self,
+        _: &StateMetadata,
+        _: &StateFunctions,
+        _: &TableRegistry,
+    ) -> Result<String, &'static str> {
+        match self {
+            Self::Min => Ok("min".to_owned()),
+            Self::Max => Ok("max".to_owned()),
+        }
+    }
+}
+
 impl ToYamlString for expression::ReduceOperator {
     fn to_yaml_string(
         &self,
@@ -684,6 +698,85 @@ macro_rules! define_numeric_table_exp_to_yaml {
 
 define_numeric_table_exp_to_yaml!(Integer, integer_tables);
 define_numeric_table_exp_to_yaml!(Continuous, continuous_tables);
+
+macro_rules! define_element_table_exp_to_yaml {
+    ($t:ty, $($field:ident).+) => {
+        impl ToYamlString for expression::ElementTableExpression<$t>{
+            fn to_yaml_string(&self, state_data: &StateMetadata, state_functions: &StateFunctions, table_registry: &TableRegistry) -> Result<String, &'static str> {
+                let tables_in_model = &table_registry . $( $field ).+;
+                match self{
+                    Self::Constant(value) => Ok(value.to_string()),
+                    Self::Table(index, argexp_vec) =>
+                        Ok(format!("({table_str} {argexp_vec_str})",
+                            table_str=find_key_for_value(&tables_in_model.name_to_table, index)?,
+                            argexp_vec_str=argexp_vec.iter()
+                                        .map(|argexp| argexp.to_yaml_string(state_data, state_functions, table_registry).unwrap())
+                                        .collect::<Vec<String>>()
+                                        .join(" "))),
+                    Self::TableReduce(op, index, argexp_vec) =>
+                        Ok(format!("({op_str} {table_str} {argexp_vec_str})",
+                            op_str=op.to_yaml_string(state_data, state_functions, table_registry)?,
+                            table_str=find_key_for_value(&tables_in_model.name_to_table, index)?,
+                            argexp_vec_str=argexp_vec.iter()
+                                        .map(|argexp| argexp.to_yaml_string(state_data, state_functions, table_registry).unwrap())
+                                        .collect::<Vec<String>>()
+                                        .join(" "))),
+
+                    Self::Table1D(index, eexp) =>
+                        Ok(format!("({table_str} {eexp_str})",
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_1d, index)?,
+                            eexp_str=eexp.to_yaml_string(state_data, state_functions, table_registry)?)),
+                    Self::Table1DReduce(op, index, eexp) =>
+                        Ok(format!("({op_str} {table_str} {eexp_str})",
+                            op_str=op.to_yaml_string(state_data, state_functions, table_registry)?,
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_1d, index)?,
+                            eexp_str=eexp.to_yaml_string(state_data, state_functions, table_registry)?)),
+
+                    Self::Table2D(index, eexp1, eexp2) =>
+                        Ok(format!("({table_str} {eexp1_str} {eexp2_str})",
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_2d, index)?,
+                            eexp1_str=eexp1.to_yaml_string(state_data, state_functions, table_registry)?,
+                            eexp2_str=eexp2.to_yaml_string(state_data, state_functions, table_registry)?)),
+                    Self::Table2DReduce(op, index, eexp1, eexp2) =>
+                        Ok(format!("({op_str} {table_str} {eexp1_str} {eexp2_str})",
+                            op_str=op.to_yaml_string(state_data, state_functions, table_registry)?,
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_2d, index)?,
+                            eexp1_str=eexp1.to_yaml_string(state_data, state_functions, table_registry)?,
+                            eexp2_str=eexp2.to_yaml_string(state_data, state_functions, table_registry)?)),
+                    Self::Table2DReduceX(op, index, sexp, eexp) =>
+                        Ok(format!("({op_str} {table_str} {sexp_str} {eexp_str})",
+                            op_str=op.to_yaml_string(state_data, state_functions, table_registry)?,
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_2d, index)?,
+                            sexp_str=sexp.to_yaml_string(state_data, state_functions, table_registry)?,
+                            eexp_str=eexp.to_yaml_string(state_data, state_functions, table_registry)?)),
+                    Self::Table2DReduceY(op, index, eexp, sexp) =>
+                        Ok(format!("({op_str} {table_str} {eexp_str} {sexp_str})",
+                            op_str=op.to_yaml_string(state_data, state_functions, table_registry)?,
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_2d, index)?,
+                            eexp_str=eexp.to_yaml_string(state_data, state_functions, table_registry)?,
+                            sexp_str=sexp.to_yaml_string(state_data, state_functions, table_registry)?)),
+
+                    Self::Table3D(index, eexp1, eexp2, eexp3) =>
+                        Ok(format!("({table_str} {eexp1_str} {eexp2_str} {eexp3_str})",
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_3d, index)?,
+                            eexp1_str=eexp1.to_yaml_string(state_data, state_functions, table_registry)?,
+                            eexp2_str=eexp2.to_yaml_string(state_data, state_functions, table_registry)?,
+                            eexp3_str=eexp3.to_yaml_string(state_data, state_functions, table_registry)?)),
+                    Self::Table3DReduce(op, index, eexp1, eexp2, eexp3) =>
+                        Ok(format!("({op_str} {table_str} {eexp1_str} {eexp2_str} {eexp3_str})",
+                            op_str=op.to_yaml_string(state_data, state_functions, table_registry)?,
+                            table_str=find_key_for_value(&tables_in_model.name_to_table_3d, index)?,
+                            eexp1_str=eexp1.to_yaml_string(state_data, state_functions, table_registry)?,
+                            eexp2_str=eexp2.to_yaml_string(state_data, state_functions, table_registry)?,
+                            eexp3_str=eexp3.to_yaml_string(state_data, state_functions, table_registry)?)),
+                    _ => Err("Current version doesn't support vector expressions"),
+                }
+            }
+        }
+    };
+}
+
+define_element_table_exp_to_yaml!(Element, element_tables);
 
 #[cfg(test)]
 mod tests {

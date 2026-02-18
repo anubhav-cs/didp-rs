@@ -3055,6 +3055,107 @@ impl CheckExpression<expression::ArgumentExpression> for Model {
     }
 }
 
+macro_rules! impl_check_element_table_expression {
+    ($T:ty,$x:ident) => {
+        impl CheckExpression<expression::ElementTableExpression<$T>> for Model {
+            fn check_expression(
+                &self,
+                expression: &expression::ElementTableExpression<$T>,
+                allow_cost: bool,
+            ) -> Result<(), ModelErr> {
+                match expression {
+                    expression::ElementTableExpression::Constant(_) => Ok(()),
+                    expression::ElementTableExpression::Table(id, args) => {
+                        self.table_registry.$x.check_table(*id)?;
+                        for expression in args {
+                            self.check_expression(expression, allow_cost)?;
+                        }
+                        Ok(())
+                    }
+                    expression::ElementTableExpression::TableReduce(_, id, args) => {
+                        self.table_registry.$x.check_table(*id)?;
+                        for expression in args {
+                            self.check_expression(expression, allow_cost)?;
+                        }
+                        Ok(())
+                    }
+                    expression::ElementTableExpression::Table1D(id, x) => {
+                        self.table_registry.$x.check_table_1d(*id)?;
+                        self.check_expression(x, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2D(id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table3D(id, x, y, z) => {
+                        self.table_registry.$x.check_table_3d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)?;
+                        self.check_expression(z, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table1DReduce(_, id, x) => {
+                        self.table_registry.$x.check_table_1d(*id)?;
+                        self.check_expression(x, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table1DVectorReduce(_, id, x) => {
+                        self.table_registry.$x.check_table_1d(*id)?;
+                        self.check_expression(x, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DReduce(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DVectorReduce(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DSetVectorReduce(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DVectorSetReduce(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DReduceX(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DReduceY(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DVectorReduceX(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table2DVectorReduceY(_, id, x, y) => {
+                        self.table_registry.$x.check_table_2d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)
+                    }
+                    expression::ElementTableExpression::Table3DReduce(_, id, x, y, z) => {
+                        self.table_registry.$x.check_table_3d(*id)?;
+                        self.check_expression(x, allow_cost)?;
+                        self.check_expression(y, allow_cost)?;
+                        self.check_expression(z, allow_cost)
+                    }
+                }
+            }
+        }
+    };
+}
+
+impl_check_element_table_expression!(Element, element_tables);
+
 macro_rules! impl_check_numeric_table_expression {
     ($T:ty,$x:ident) => {
         impl CheckExpression<expression::NumericTableExpression<$T>> for Model {
@@ -16934,7 +17035,7 @@ mod tests {
         assert!(model.check_expression(&expression, false).is_ok());
         assert!(model.check_expression(&expression, true).is_ok());
 
-        let expression = ElementExpression::Table(Box::new(TableExpression::Constant(0)));
+        let expression = ElementExpression::Table(Box::new(ElementTableExpression::Constant(0)));
         assert!(model.check_expression(&expression, false).is_ok());
         assert!(model.check_expression(&expression, true).is_ok());
 
@@ -16999,7 +17100,7 @@ mod tests {
         assert!(model.check_expression(&expression, false).is_err());
         assert!(model.check_expression(&expression, true).is_err());
 
-        let expression = ElementExpression::Table(Box::new(TableExpression::Table1D(
+        let expression = ElementExpression::Table(Box::new(ElementTableExpression::Table1D(
             0,
             ElementExpression::Constant(0),
         )));

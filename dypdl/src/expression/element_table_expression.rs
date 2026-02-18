@@ -1,0 +1,2373 @@
+use super::argument_expression::ArgumentExpression;
+use super::element_expression::ElementExpression;
+use super::element_operator::ElementOperator;
+use super::reference_expression::ReferenceExpression;
+use super::set_expression::SetExpression;
+use super::vector_expression::VectorExpression;
+use crate::state::StateInterface;
+use crate::state_functions::{StateFunctionCache, StateFunctions};
+use crate::table::{Table1D, Table2D};
+use crate::table_data::TableData;
+use crate::table_registry::TableRegistry;
+use crate::variable_type::{Element, Set};
+
+/// Expression referring to a numeric table.
+#[derive(Debug, PartialEq, Clone)]
+pub enum ElementTableExpression<T: PartialOrd + Copy + num_traits::Bounded> {
+    /// Constant.
+    Constant(T),
+    /// Constant in a table.
+    Table(usize, Vec<ElementExpression>),
+    /// Reduce constants over sets and vectors in a table.
+    TableReduce(ElementOperator, usize, Vec<ArgumentExpression>),
+    /// Constant in a 1D table.
+    Table1D(usize, ElementExpression),
+    /// Constant in a 2D table.
+    Table2D(usize, ElementExpression, ElementExpression),
+    /// Constant in a 3D table.
+    Table3D(
+        usize,
+        ElementExpression,
+        ElementExpression,
+        ElementExpression,
+    ),
+    /// Reduce constants over a set in a 1D table.
+    Table1DReduce(ElementOperator, usize, SetExpression),
+    /// Reduce constants over a vector in a 1D table.
+    Table1DVectorReduce(ElementOperator, usize, VectorExpression),
+    /// Reduce constants over two sets in a 2D table.
+    Table2DReduce(ElementOperator, usize, SetExpression, SetExpression),
+    /// Reduce constants over two vectors in a 2D table.
+    Table2DVectorReduce(ElementOperator, usize, VectorExpression, VectorExpression),
+    /// Reduce constants over a set and a vector in a 2D table.
+    Table2DSetVectorReduce(ElementOperator, usize, SetExpression, VectorExpression),
+    /// Reduce constants over a vector and a set in a 2D table.
+    Table2DVectorSetReduce(ElementOperator, usize, VectorExpression, SetExpression),
+    /// Reduce constants over a set in a 2D table.
+    Table2DReduceX(ElementOperator, usize, SetExpression, ElementExpression),
+    /// Reduce constants over a set in a 2D table.
+    Table2DReduceY(ElementOperator, usize, ElementExpression, SetExpression),
+    /// Reduce constants over a vector in a 2D table.
+    Table2DVectorReduceX(ElementOperator, usize, VectorExpression, ElementExpression),
+    /// Reduce constants over a vector in a 2D table.
+    Table2DVectorReduceY(ElementOperator, usize, ElementExpression, VectorExpression),
+    /// Reduce constants over sets and vectors in a 3D table.
+    Table3DReduce(
+        ElementOperator,
+        usize,
+        ArgumentExpression,
+        ArgumentExpression,
+        ArgumentExpression,
+    ),
+}
+
+impl<T: PartialOrd + Copy + num_traits::Bounded> ElementTableExpression<T> {
+    /// Returns the evaluation result.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the cost of the transitioned state is used or an empty set or vector is passed to a reduce operation or a min/max reduce operation is performed on an empty set or vector.
+    pub fn eval<U: StateInterface>(
+        &self,
+        state: &U,
+        function_cache: &mut StateFunctionCache,
+        state_functions: &StateFunctions,
+        registry: &TableRegistry,
+        tables: &TableData<T>,
+    ) -> T {
+        match self {
+            Self::Constant(value) => *value,
+            Self::Table(i, args) => {
+                let args: Vec<Element> = args
+                    .iter()
+                    .map(|x| x.eval(state, function_cache, state_functions, registry))
+                    .collect();
+                tables.tables[*i].eval(&args)
+            }
+            Self::TableReduce(op, i, args) => {
+                let args = ArgumentExpression::eval_args(
+                    args.iter(),
+                    state,
+                    function_cache,
+                    state_functions,
+                    registry,
+                );
+                op.eval_iter(args.into_iter().map(|args| tables.tables[*i].eval(&args)))
+                    .unwrap()
+            }
+            Self::Table1D(i, x) => {
+                tables.tables_1d[*i].eval(x.eval(state, function_cache, state_functions, registry))
+            }
+            Self::Table2D(i, x, y) => tables.tables_2d[*i].eval(
+                x.eval(state, function_cache, state_functions, registry),
+                y.eval(state, function_cache, state_functions, registry),
+            ),
+            Self::Table3D(i, x, y, z) => tables.tables_3d[*i].eval(
+                x.eval(state, function_cache, state_functions, registry),
+                y.eval(state, function_cache, state_functions, registry),
+                z.eval(state, function_cache, state_functions, registry),
+            ),
+            Self::Table1DReduce(op, i, SetExpression::Reference(x)) => Self::reduce_table_1d(
+                op,
+                &tables.tables_1d[*i],
+                x.eval(state, function_cache, state_functions, registry)
+                    .ones(),
+            ),
+            Self::Table1DReduce(op, i, SetExpression::StateFunction(x)) => Self::reduce_table_1d(
+                op,
+                &tables.tables_1d[*i],
+                function_cache
+                    .get_set_value(*x, state, state_functions, registry)
+                    .ones(),
+            ),
+            Self::Table1DReduce(op, i, x) => Self::reduce_table_1d(
+                op,
+                &tables.tables_1d[*i],
+                x.eval(state, function_cache, state_functions, registry)
+                    .ones(),
+            ),
+            Self::Table1DVectorReduce(op, i, VectorExpression::Reference(x)) => {
+                Self::reduce_table_1d(
+                    op,
+                    &tables.tables_1d[*i],
+                    x.eval(state, function_cache, state_functions, registry)
+                        .iter()
+                        .copied(),
+                )
+            }
+            Self::Table1DVectorReduce(op, i, x) => Self::reduce_table_1d(
+                op,
+                &tables.tables_1d[*i],
+                x.eval(state, function_cache, state_functions, registry)
+                    .into_iter(),
+            ),
+            Self::Table2DReduce(
+                op,
+                i,
+                SetExpression::StateFunction(x),
+                SetExpression::StateFunction(y),
+            ) => {
+                let (x, y) =
+                    function_cache.get_set_value_pair(*x, *y, state, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x.ones(), y)
+            }
+            Self::Table2DReduce(
+                op,
+                i,
+                SetExpression::StateFunction(x),
+                SetExpression::Reference(y),
+            ) => {
+                let y = y.eval(state, function_cache, state_functions, registry);
+                let x = function_cache
+                    .get_set_value(*x, state, state_functions, registry)
+                    .ones();
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DReduce(
+                op,
+                i,
+                SetExpression::Reference(x),
+                SetExpression::StateFunction(y),
+            ) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .ones();
+                let y = function_cache.get_set_value(*y, state, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DReduce(op, i, SetExpression::StateFunction(x), y) => {
+                let y = y.eval(state, function_cache, state_functions, registry);
+                let x = function_cache
+                    .get_set_value(*x, state, state_functions, registry)
+                    .ones();
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, &y)
+            }
+            Self::Table2DReduce(op, i, x, SetExpression::StateFunction(y)) => {
+                let x = x.eval(state, function_cache, state_functions, registry);
+                let y = function_cache.get_set_value(*y, state, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x.ones(), y)
+            }
+            Self::Table2DReduce(
+                op,
+                i,
+                SetExpression::Reference(x),
+                SetExpression::Reference(y),
+            ) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .ones();
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DReduce(op, i, SetExpression::Reference(x), y) => {
+                let y = y.eval(state, function_cache, state_functions, registry);
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .ones();
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, &y)
+            }
+            Self::Table2DReduce(op, i, x, SetExpression::Reference(y)) => {
+                let x = x.eval(state, function_cache, state_functions, registry);
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_set_x(op, &tables.tables_2d[*i], &x, y.ones())
+            }
+            Self::Table2DReduce(op, i, x, y) => {
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_set_y(
+                    op,
+                    &tables.tables_2d[*i],
+                    x.eval(state, function_cache, state_functions, registry)
+                        .ones(),
+                    &y,
+                )
+            }
+            Self::Table2DVectorReduce(
+                op,
+                i,
+                VectorExpression::Reference(x),
+                VectorExpression::Reference(y),
+            ) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                Self::reduce_table_2d(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorReduce(op, i, VectorExpression::Reference(x), y) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                Self::reduce_table_2d(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorReduce(op, i, x, VectorExpression::Reference(y)) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                Self::reduce_table_2d(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorReduce(op, i, x, y) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                Self::reduce_table_2d(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DSetVectorReduce(
+                op,
+                i,
+                SetExpression::Reference(x),
+                VectorExpression::Reference(y),
+            ) => {
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .ones();
+                Self::reduce_table_2d(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DSetVectorReduce(op, i, SetExpression::Reference(x), y) => {
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                Self::reduce_table_2d(
+                    op,
+                    &tables.tables_2d[*i],
+                    x.eval(state, function_cache, state_functions, registry)
+                        .ones(),
+                    y,
+                )
+            }
+            Self::Table2DSetVectorReduce(op, i, x, VectorExpression::Reference(y)) => {
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                Self::reduce_table_2d(
+                    op,
+                    &tables.tables_2d[*i],
+                    x.eval(state, function_cache, state_functions, registry)
+                        .ones(),
+                    y,
+                )
+            }
+            Self::Table2DSetVectorReduce(op, i, x, y) => {
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                Self::reduce_table_2d(
+                    op,
+                    &tables.tables_2d[*i],
+                    x.eval(state, function_cache, state_functions, registry)
+                        .ones(),
+                    y,
+                )
+            }
+            Self::Table2DVectorSetReduce(
+                op,
+                i,
+                VectorExpression::Reference(x),
+                SetExpression::Reference(y),
+            ) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorSetReduce(op, i, x, SetExpression::Reference(y)) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorSetReduce(op, i, VectorExpression::Reference(x), y) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, &y)
+            }
+            Self::Table2DVectorSetReduce(op, i, x, y) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_set_y(op, &tables.tables_2d[*i], x, &y)
+            }
+            Self::Table2DReduceX(op, i, SetExpression::Reference(x), y) => {
+                let y = y.eval(state, function_cache, state_functions, registry);
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .ones();
+                Self::reduce_table_2d_x(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DReduceX(op, i, x, y) => {
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_x(
+                    op,
+                    &tables.tables_2d[*i],
+                    x.eval(state, function_cache, state_functions, registry)
+                        .ones(),
+                    y,
+                )
+            }
+            Self::Table2DReduceY(op, i, x, SetExpression::Reference(y)) => {
+                let x = x.eval(state, function_cache, state_functions, registry);
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .ones();
+                Self::reduce_table_2d_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DReduceY(op, i, x, y) => {
+                let x = x.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_y(
+                    op,
+                    &tables.tables_2d[*i],
+                    x,
+                    y.eval(state, function_cache, state_functions, registry)
+                        .ones(),
+                )
+            }
+            Self::Table2DVectorReduceX(op, i, VectorExpression::Reference(x), y) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_x(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorReduceX(op, i, x, y) => {
+                let x = x
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                let y = y.eval(state, function_cache, state_functions, registry);
+                Self::reduce_table_2d_x(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorReduceY(op, i, x, VectorExpression::Reference(y)) => {
+                let x = x.eval(state, function_cache, state_functions, registry);
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .iter()
+                    .copied();
+                Self::reduce_table_2d_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table2DVectorReduceY(op, i, x, y) => {
+                let x = x.eval(state, function_cache, state_functions, registry);
+                let y = y
+                    .eval(state, function_cache, state_functions, registry)
+                    .into_iter();
+                Self::reduce_table_2d_y(op, &tables.tables_2d[*i], x, y)
+            }
+            Self::Table3DReduce(op, i, x, y, z) => {
+                let args = ArgumentExpression::eval_args(
+                    [x, y, z].into_iter(),
+                    state,
+                    function_cache,
+                    state_functions,
+                    registry,
+                );
+                op.eval_iter(
+                    args.into_iter()
+                        .map(|args| tables.tables_3d[*i].eval(args[0], args[1], args[2])),
+                )
+                .unwrap()
+            }
+        }
+    }
+
+    /// Returns a simplified version by precomputation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a min/max reduce operation is performed on an empty set or vector.
+    pub fn simplify(
+        &self,
+        registry: &TableRegistry,
+        tables: &TableData<T>,
+    ) -> ElementTableExpression<T> {
+        match self {
+            Self::Table(i, args) => {
+                let args: Vec<ElementExpression> =
+                    args.iter().map(|x| x.simplify(registry)).collect();
+                let mut simplified_args = Vec::with_capacity(args.len());
+                for arg in &args {
+                    match arg {
+                        ElementExpression::Constant(arg) => {
+                            simplified_args.push(*arg);
+                        }
+                        _ => return Self::Table(*i, args),
+                    }
+                }
+                Self::Constant(tables.tables[*i].eval(&simplified_args))
+            }
+            Self::TableReduce(op, i, args) => {
+                let args: Vec<ArgumentExpression> =
+                    args.iter().map(|x| x.simplify(registry)).collect();
+                if let Some(args) = ArgumentExpression::simplify_args(args.iter()) {
+                    Self::Constant(
+                        op.eval_iter(args.into_iter().map(|args| tables.tables[*i].eval(&args)))
+                            .unwrap(),
+                    )
+                } else {
+                    Self::TableReduce(op.clone(), *i, args)
+                }
+            }
+            Self::Table1D(i, x) => match x.simplify(registry) {
+                ElementExpression::Constant(x) => Self::Constant(tables.tables_1d[*i].eval(x)),
+                x => Self::Table1D(*i, x),
+            },
+            Self::Table2D(i, x, y) => match (x.simplify(registry), y.simplify(registry)) {
+                (ElementExpression::Constant(x), ElementExpression::Constant(y)) => {
+                    Self::Constant(tables.tables_2d[*i].eval(x, y))
+                }
+                (x, y) => Self::Table2D(*i, x, y),
+            },
+            Self::Table3D(i, x, y, z) => match (
+                x.simplify(registry),
+                y.simplify(registry),
+                z.simplify(registry),
+            ) {
+                (
+                    ElementExpression::Constant(x),
+                    ElementExpression::Constant(y),
+                    ElementExpression::Constant(z),
+                ) => Self::Constant(tables.tables_3d[*i].eval(x, y, z)),
+                (x, y, z) => Self::Table3D(*i, x, y, z),
+            },
+            Self::Table1DReduce(op, i, x) => match x.simplify(registry) {
+                SetExpression::Reference(ReferenceExpression::Constant(x)) => {
+                    Self::Constant(Self::reduce_table_1d(op, &tables.tables_1d[*i], x.ones()))
+                }
+                x => Self::Table1DReduce(op.clone(), *i, x),
+            },
+            Self::Table1DVectorReduce(op, i, x) => match x.simplify(registry) {
+                VectorExpression::Reference(ReferenceExpression::Constant(x)) => Self::Constant(
+                    Self::reduce_table_1d(op, &tables.tables_1d[*i], x.into_iter()),
+                ),
+                x => Self::Table1DVectorReduce(op.clone(), *i, x),
+            },
+            Self::Table2DReduce(op, i, x, y) => {
+                match (x.simplify(registry), y.simplify(registry)) {
+                    (
+                        SetExpression::Reference(ReferenceExpression::Constant(x)),
+                        SetExpression::Reference(ReferenceExpression::Constant(y)),
+                    ) => Self::Constant(Self::reduce_table_2d_set_y(
+                        op,
+                        &tables.tables_2d[*i],
+                        x.ones(),
+                        &y,
+                    )),
+                    (x, y) => Self::Table2DReduce(op.clone(), *i, x, y),
+                }
+            }
+            Self::Table2DVectorReduce(op, i, x, y) => {
+                match (x.simplify(registry), y.simplify(registry)) {
+                    (
+                        VectorExpression::Reference(ReferenceExpression::Constant(x)),
+                        VectorExpression::Reference(ReferenceExpression::Constant(y)),
+                    ) => Self::Constant(Self::reduce_table_2d(
+                        op,
+                        &tables.tables_2d[*i],
+                        x.into_iter(),
+                        y.into_iter(),
+                    )),
+                    (x, y) => Self::Table2DVectorReduce(op.clone(), *i, x, y),
+                }
+            }
+            Self::Table2DSetVectorReduce(op, i, x, y) => {
+                match (x.simplify(registry), y.simplify(registry)) {
+                    (
+                        SetExpression::Reference(ReferenceExpression::Constant(x)),
+                        VectorExpression::Reference(ReferenceExpression::Constant(y)),
+                    ) => Self::Constant(Self::reduce_table_2d(
+                        op,
+                        &tables.tables_2d[*i],
+                        x.ones(),
+                        y.into_iter(),
+                    )),
+                    (x, y) => Self::Table2DSetVectorReduce(op.clone(), *i, x, y),
+                }
+            }
+            Self::Table2DVectorSetReduce(op, i, x, y) => {
+                match (x.simplify(registry), y.simplify(registry)) {
+                    (
+                        VectorExpression::Reference(ReferenceExpression::Constant(x)),
+                        SetExpression::Reference(ReferenceExpression::Constant(y)),
+                    ) => Self::Constant(Self::reduce_table_2d_set_y(
+                        op,
+                        &tables.tables_2d[*i],
+                        x.into_iter(),
+                        &y,
+                    )),
+                    (x, y) => Self::Table2DVectorSetReduce(op.clone(), *i, x, y),
+                }
+            }
+            Self::Table2DReduceX(op, i, x, y) => match (x.simplify(registry), y.simplify(registry))
+            {
+                (
+                    SetExpression::Reference(ReferenceExpression::Constant(x)),
+                    ElementExpression::Constant(y),
+                ) => Self::Constant(Self::reduce_table_2d_x(
+                    op,
+                    &tables.tables_2d[*i],
+                    x.ones(),
+                    y,
+                )),
+                (x, y) => Self::Table2DReduceX(op.clone(), *i, x, y),
+            },
+            Self::Table2DReduceY(op, i, x, y) => match (x.simplify(registry), y.simplify(registry))
+            {
+                (
+                    ElementExpression::Constant(x),
+                    SetExpression::Reference(ReferenceExpression::Constant(y)),
+                ) => Self::Constant(Self::reduce_table_2d_y(
+                    op,
+                    &tables.tables_2d[*i],
+                    x,
+                    y.ones(),
+                )),
+                (x, y) => Self::Table2DReduceY(op.clone(), *i, x, y),
+            },
+            Self::Table2DVectorReduceX(op, i, x, y) => {
+                match (x.simplify(registry), y.simplify(registry)) {
+                    (
+                        VectorExpression::Reference(ReferenceExpression::Constant(x)),
+                        ElementExpression::Constant(y),
+                    ) => Self::Constant(Self::reduce_table_2d_x(
+                        op,
+                        &tables.tables_2d[*i],
+                        x.into_iter(),
+                        y,
+                    )),
+                    (x, y) => Self::Table2DVectorReduceX(op.clone(), *i, x, y),
+                }
+            }
+            Self::Table2DVectorReduceY(op, i, x, y) => {
+                match (x.simplify(registry), y.simplify(registry)) {
+                    (
+                        ElementExpression::Constant(x),
+                        VectorExpression::Reference(ReferenceExpression::Constant(y)),
+                    ) => Self::Constant(Self::reduce_table_2d_y(
+                        op,
+                        &tables.tables_2d[*i],
+                        x,
+                        y.into_iter(),
+                    )),
+                    (x, y) => Self::Table2DVectorReduceY(op.clone(), *i, x, y),
+                }
+            }
+            Self::Table3DReduce(op, i, x, y, z) => {
+                let x = x.simplify(registry);
+                let y = y.simplify(registry);
+                let z = z.simplify(registry);
+                if let Some(args) = ArgumentExpression::simplify_args([&x, &y, &z].into_iter()) {
+                    Self::Constant(
+                        op.eval_iter(
+                            args.into_iter()
+                                .map(|args| tables.tables_3d[*i].eval(args[0], args[1], args[2])),
+                        )
+                        .unwrap(),
+                    )
+                } else {
+                    Self::Table3DReduce(op.clone(), *i, x, y, z)
+                }
+            }
+            _ => self.clone(),
+        }
+    }
+
+    fn reduce_table_1d<I>(op: &ElementOperator, table: &Table1D<T>, x: I) -> T
+    where
+        T: PartialOrd,
+        I: Iterator<Item = Element>,
+    {
+        op.eval_iter(x.map(|x| table.eval(x))).unwrap()
+    }
+
+    fn reduce_table_2d<I, J>(op: &ElementOperator, table: &Table2D<T>, x: I, y: J) -> T
+    where
+        T: PartialOrd,
+        I: Iterator<Item = Element>,
+        J: Iterator<Item = Element> + Clone,
+    {
+        op.eval_iter(x.map(|x| op.eval_iter(y.clone().map(|y| table.eval(x, y))).unwrap()))
+            .unwrap()
+    }
+
+    fn reduce_table_2d_set_x<I>(op: &ElementOperator, table: &Table2D<T>, x: &Set, y: I) -> T
+    where
+        T: PartialOrd,
+        I: Iterator<Item = Element>,
+    {
+        op.eval_iter(y.map(|y| op.eval_iter(x.ones().map(|x| table.eval(x, y))).unwrap()))
+            .unwrap()
+    }
+
+    fn reduce_table_2d_set_y<I>(op: &ElementOperator, table: &Table2D<T>, x: I, y: &Set) -> T
+    where
+        T: PartialOrd,
+        I: Iterator<Item = Element>,
+    {
+        op.eval_iter(x.map(|x| op.eval_iter(y.ones().map(|y| table.eval(x, y))).unwrap()))
+            .unwrap()
+    }
+
+    fn reduce_table_2d_x<I>(op: &ElementOperator, table: &Table2D<T>, x: I, y: Element) -> T
+    where
+        T: PartialOrd,
+        I: Iterator<Item = Element>,
+    {
+        op.eval_iter(x.map(|x| table.eval(x, y))).unwrap()
+    }
+
+    fn reduce_table_2d_y<I>(op: &ElementOperator, table: &Table2D<T>, x: Element, y: I) -> T
+    where
+        T: PartialOrd,
+        I: Iterator<Item = Element>,
+    {
+        op.eval_iter(y.map(|y| table.eval(x, y))).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::set_expression::SetElementOperation;
+    use super::*;
+    use crate::state::*;
+    use crate::table;
+    use crate::table_data::TableInterface;
+    use rustc_hash::FxHashMap;
+
+    fn generate_registry() -> TableRegistry {
+        let mut name_to_constant = FxHashMap::default();
+        name_to_constant.insert(String::from("f0"), 0);
+
+        let tables_1d = vec![table::Table1D::new(vec![10, 20, 30])];
+        let mut name_to_table_1d = FxHashMap::default();
+        name_to_table_1d.insert(String::from("f1"), 0);
+
+        let tables_2d = vec![table::Table2D::new(vec![
+            vec![10, 20, 30],
+            vec![40, 50, 60],
+            vec![70, 80, 90],
+        ])];
+        let mut name_to_table_2d = FxHashMap::default();
+        name_to_table_2d.insert(String::from("f2"), 0);
+
+        let tables_3d = vec![table::Table3D::new(vec![
+            vec![vec![10, 20, 30], vec![40, 50, 60], vec![70, 80, 90]],
+            vec![vec![10, 20, 30], vec![40, 50, 60], vec![70, 80, 90]],
+            vec![vec![10, 20, 30], vec![40, 50, 60], vec![70, 80, 90]],
+        ])];
+        let mut name_to_table_3d = FxHashMap::default();
+        name_to_table_3d.insert(String::from("f3"), 0);
+
+        let mut map = FxHashMap::default();
+        let key = vec![0, 1, 0, 0];
+        map.insert(key, 100);
+        let key = vec![0, 1, 0, 1];
+        map.insert(key, 200);
+        let key = vec![0, 1, 2, 0];
+        map.insert(key, 300);
+        let key = vec![0, 1, 2, 1];
+        map.insert(key, 400);
+        let tables = vec![table::Table::new(map, 0)];
+        let mut name_to_table = FxHashMap::default();
+        name_to_table.insert(String::from("f4"), 0);
+
+        TableRegistry {
+            integer_tables: TableData {
+                name_to_constant,
+                tables_1d,
+                name_to_table_1d,
+                tables_2d,
+                name_to_table_2d,
+                tables_3d,
+                name_to_table_3d,
+                tables,
+                name_to_table,
+            },
+            ..Default::default()
+        }
+    }
+
+    fn generate_state() -> State {
+        let mut set1 = Set::with_capacity(3);
+        set1.insert(0);
+        set1.insert(2);
+        let mut set2 = Set::with_capacity(3);
+        set2.insert(0);
+        set2.insert(1);
+        State {
+            signature_variables: SignatureVariables {
+                set_variables: vec![set1, set2, Set::with_capacity(3), Set::with_capacity(3)],
+                vector_variables: vec![vec![0, 2], vec![0, 1], vec![], vec![]],
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn constant_eval() {
+        let registry = generate_registry();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let state = generate_state();
+        let expression = ElementTableExpression::Constant(10);
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_1d_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::Table1D(0, ElementExpression::Constant(0));
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+        let expression = ElementTableExpression::Table1D(0, ElementExpression::Constant(1));
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            20
+        );
+        let expression = ElementTableExpression::Table1D(0, ElementExpression::Constant(2));
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            30
+        );
+    }
+
+    #[test]
+    fn table_1d_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::Table1DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+        let expression = ElementTableExpression::Table1DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+        let expression = ElementTableExpression::Table1DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Complement(Box::new(SetExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            20
+        );
+    }
+
+    #[test]
+    fn table_1d_vector_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::Table1DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+        let expression = ElementTableExpression::Table1DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_1d_set_state_function_reduce_eval() {
+        let mut state_metadata = StateMetadata::default();
+        let ob = state_metadata.add_object_type("ob", 3);
+        assert!(ob.is_ok());
+        let ob = ob.unwrap();
+        let v = state_metadata.add_set_variable("v", ob);
+        assert!(v.is_ok());
+        let v = v.unwrap();
+
+        let mut state_functions = StateFunctions::default();
+        let f = state_functions.add_set_function("f", v.add(0).add(1));
+        assert!(f.is_ok());
+        let f = f.unwrap();
+
+        let mut registry = TableRegistry::default();
+        let t = registry.add_table_1d("t", vec![1, 2]);
+        assert!(t.is_ok());
+        let t = t.unwrap();
+
+        let state = State {
+            signature_variables: SignatureVariables {
+                set_variables: vec![Set::with_capacity(3)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let expression = ElementTableExpression::Table1DReduce(ElementOperator::Min, t.id(), f);
+
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut StateFunctionCache::new(&state_functions),
+                &state_functions,
+                &registry,
+                &registry.integer_tables,
+            ),
+            1,
+        );
+    }
+
+    #[test]
+    fn table_2d_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::Table2D(
+            0,
+            ElementExpression::Constant(0),
+            ElementExpression::Constant(1),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            20
+        );
+    }
+
+    #[test]
+    fn table_2d_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            SetExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(1)),
+            )))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(0)),
+            )))),
+            SetExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(0)),
+            )))),
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(1)),
+            )))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+            VectorExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(1),
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+            VectorExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(1),
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_set_vector_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DSetVectorReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            VectorExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DSetVectorReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(1),
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DSetVectorReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(0)),
+            )))),
+            VectorExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DSetVectorReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(0)),
+            )))),
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(1),
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_set_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DVectorSetReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+            SetExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorSetReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+            SetExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorSetReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(1)),
+            )))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorSetReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(1)),
+            )))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_min_x_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DReduceX(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DReduceX(
+            ElementOperator::Min,
+            0,
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(0)),
+            )))),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_min_x_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DVectorReduceX(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduceX(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_min_y_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            SetExpression::Complement(Box::new(SetExpression::Complement(Box::new(
+                SetExpression::Reference(ReferenceExpression::Variable(0)),
+            )))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_min_y_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+
+        let expression = ElementTableExpression::Table2DVectorReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            VectorExpression::Reverse(Box::new(VectorExpression::Reference(
+                ReferenceExpression::Variable(0),
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_2d_set_state_function_element_reduce_x_eval() {
+        let mut state_metadata = StateMetadata::default();
+        let ob = state_metadata.add_object_type("ob", 3);
+        assert!(ob.is_ok());
+        let ob = ob.unwrap();
+        let v = state_metadata.add_set_variable("v", ob);
+        assert!(v.is_ok());
+        let v = v.unwrap();
+
+        let mut state_functions = StateFunctions::default();
+        let f = state_functions.add_set_function("f", v.add(0).add(1));
+        assert!(f.is_ok());
+        let f = f.unwrap();
+
+        let mut registry = TableRegistry::default();
+        let t = registry.add_table_2d("t", vec![vec![1, 2], vec![3, 4]]);
+        assert!(t.is_ok());
+        let t = t.unwrap();
+
+        let state = State {
+            signature_variables: SignatureVariables {
+                set_variables: vec![Set::with_capacity(3)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let expression =
+            ElementTableExpression::Table2DReduceX(ElementOperator::Min, t.id(), f, 1.into());
+
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut StateFunctionCache::new(&state_functions),
+                &state_functions,
+                &registry,
+                &registry.integer_tables,
+            ),
+            2,
+        );
+    }
+
+    #[test]
+    fn table_2d_element_set_state_function_reduce_y_eval() {
+        let mut state_metadata = StateMetadata::default();
+        let ob = state_metadata.add_object_type("ob", 3);
+        assert!(ob.is_ok());
+        let ob = ob.unwrap();
+        let v = state_metadata.add_set_variable("v", ob);
+        assert!(v.is_ok());
+        let v = v.unwrap();
+
+        let mut state_functions = StateFunctions::default();
+        let f = state_functions.add_set_function("f", v.add(0).add(1));
+        assert!(f.is_ok());
+        let f = f.unwrap();
+
+        let mut registry = TableRegistry::default();
+        let t = registry.add_table_2d("t", vec![vec![1, 2], vec![3, 4]]);
+        assert!(t.is_ok());
+        let t = t.unwrap();
+
+        let state = State {
+            signature_variables: SignatureVariables {
+                set_variables: vec![Set::with_capacity(3)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let expression =
+            ElementTableExpression::Table2DReduceY(ElementOperator::Min, t.id(), 1.into(), f);
+
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut StateFunctionCache::new(&state_functions),
+                &state_functions,
+                &registry,
+                &registry.integer_tables,
+            ),
+            3,
+        );
+    }
+
+    #[test]
+    fn table_2d_set_state_function_set_state_function_reduce_eval() {
+        let mut state_metadata = StateMetadata::default();
+        let ob = state_metadata.add_object_type("ob", 3);
+        assert!(ob.is_ok());
+        let ob = ob.unwrap();
+        let v = state_metadata.add_set_variable("v", ob);
+        assert!(v.is_ok());
+        let v = v.unwrap();
+
+        let mut state_functions = StateFunctions::default();
+        let f = state_functions.add_set_function("f", v.add(0).add(1));
+        assert!(f.is_ok());
+        let f = f.unwrap();
+        let g = state_functions.add_set_function("g", v.add(0).add(1));
+        assert!(g.is_ok());
+        let g = g.unwrap();
+
+        let mut registry = TableRegistry::default();
+        let t = registry.add_table_2d("t", vec![vec![1, 2], vec![3, 4]]);
+        assert!(t.is_ok());
+        let t = t.unwrap();
+
+        let state = State {
+            signature_variables: SignatureVariables {
+                set_variables: vec![Set::with_capacity(3)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let expression = ElementTableExpression::Table2DReduce(ElementOperator::Min, t.id(), f, g);
+
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut StateFunctionCache::new(&state_functions),
+                &state_functions,
+                &registry,
+                &registry.integer_tables,
+            ),
+            1,
+        );
+    }
+
+    #[test]
+    fn table_2d_set_state_function_set_reference_reduce_eval() {
+        let mut state_metadata = StateMetadata::default();
+        let ob = state_metadata.add_object_type("ob", 3);
+        assert!(ob.is_ok());
+        let ob = ob.unwrap();
+        let v = state_metadata.add_set_variable("v", ob);
+        assert!(v.is_ok());
+        let v = v.unwrap();
+
+        let mut state_functions = StateFunctions::default();
+        let f = state_functions.add_set_function("f", v.add(0).add(1));
+        assert!(f.is_ok());
+        let f = f.unwrap();
+
+        let mut registry = TableRegistry::default();
+        let t = registry.add_table_2d("t", vec![vec![1, 2], vec![3, 4]]);
+        assert!(t.is_ok());
+        let t = t.unwrap();
+
+        let set = state_metadata.create_set(ob, &[0, 1]);
+        assert!(set.is_ok());
+        let set = set.unwrap();
+
+        let state = State {
+            signature_variables: SignatureVariables {
+                set_variables: vec![Set::with_capacity(3)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let expression =
+            ElementTableExpression::Table2DReduce(ElementOperator::Min, t.id(), f, set.into());
+
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut StateFunctionCache::new(&state_functions),
+                &state_functions,
+                &registry,
+                &registry.integer_tables,
+            ),
+            1,
+        );
+    }
+
+    #[test]
+    fn table_2d_set_reference_set_state_function_reduce_eval() {
+        let mut state_metadata = StateMetadata::default();
+        let ob = state_metadata.add_object_type("ob", 3);
+        assert!(ob.is_ok());
+        let ob = ob.unwrap();
+        let v = state_metadata.add_set_variable("v", ob);
+        assert!(v.is_ok());
+        let v = v.unwrap();
+
+        let mut state_functions = StateFunctions::default();
+        let f = state_functions.add_set_function("f", v.add(0).add(1));
+        assert!(f.is_ok());
+        let f = f.unwrap();
+
+        let mut registry = TableRegistry::default();
+        let t = registry.add_table_2d("t", vec![vec![1, 2], vec![3, 4]]);
+        assert!(t.is_ok());
+        let t = t.unwrap();
+
+        let set = state_metadata.create_set(ob, &[0, 1]);
+        assert!(set.is_ok());
+        let set = set.unwrap();
+
+        let state = State {
+            signature_variables: SignatureVariables {
+                set_variables: vec![Set::with_capacity(3)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let expression =
+            ElementTableExpression::Table2DReduce(ElementOperator::Min, t.id(), set.into(), f);
+
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut StateFunctionCache::new(&state_functions),
+                &state_functions,
+                &registry,
+                &registry.integer_tables,
+            ),
+            1,
+        );
+    }
+
+    #[test]
+    fn table_3d_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::Table3D(
+            0,
+            ElementExpression::Constant(0),
+            ElementExpression::Constant(0),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_3d_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::Table3DReduce(
+            ElementOperator::Min,
+            0,
+            ArgumentExpression::Element(ElementExpression::Constant(0)),
+            ArgumentExpression::Set(SetExpression::Reference(ReferenceExpression::Variable(0))),
+            ArgumentExpression::Vector(VectorExpression::Reference(ReferenceExpression::Variable(
+                1,
+            ))),
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn table_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::Table(
+            0,
+            vec![
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(1),
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(0),
+            ],
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            100
+        );
+        let expression = ElementTableExpression::Table(
+            0,
+            vec![
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(1),
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(1),
+            ],
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            200
+        );
+        let expression = ElementTableExpression::Table(
+            0,
+            vec![
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(1),
+                ElementExpression::Constant(2),
+                ElementExpression::Constant(0),
+            ],
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            300
+        );
+        let expression = ElementTableExpression::Table(
+            0,
+            vec![
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(1),
+                ElementExpression::Constant(2),
+                ElementExpression::Constant(1),
+            ],
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            400
+        );
+    }
+
+    #[test]
+    fn table_min_eval() {
+        let registry = generate_registry();
+        let state = generate_state();
+        let state_functions = StateFunctions::default();
+        let mut function_cache = StateFunctionCache::new(&state_functions);
+        let expression = ElementTableExpression::TableReduce(
+            ElementOperator::Min,
+            0,
+            vec![
+                ArgumentExpression::Element(ElementExpression::Constant(0)),
+                ArgumentExpression::Element(ElementExpression::Constant(1)),
+                ArgumentExpression::Set(SetExpression::Complement(Box::new(
+                    SetExpression::Complement(Box::new(SetExpression::Reference(
+                        ReferenceExpression::Variable(0),
+                    ))),
+                ))),
+                ArgumentExpression::Vector(VectorExpression::Reverse(Box::new(
+                    VectorExpression::Reference(ReferenceExpression::Variable(1)),
+                ))),
+            ],
+        );
+        assert_eq!(
+            expression.eval(
+                &state,
+                &mut function_cache,
+                &state_functions,
+                &registry,
+                &registry.integer_tables
+            ),
+            100
+        );
+    }
+
+    #[test]
+    fn constant_simplify() {
+        let registry = generate_registry();
+        let expression = ElementTableExpression::Constant(0);
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_1d_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table1D(0, ElementExpression::Constant(0));
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table1D(0, ElementExpression::Variable(0));
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_1d_min_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(1);
+        let expression = ElementTableExpression::Table1DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Constant(set)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table1DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_1d_vector_min_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table1DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table1DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table2D(
+            0,
+            ElementExpression::Constant(0),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2D(
+            0,
+            ElementExpression::Constant(0),
+            ElementExpression::Variable(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_min_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(1);
+        let expression = ElementTableExpression::Table2DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Constant(set.clone())),
+            SetExpression::Reference(ReferenceExpression::Constant(set)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            SetExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_min_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table2DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+            VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+            VectorExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_set_vector_min_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(1);
+        let expression = ElementTableExpression::Table2DSetVectorReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Constant(set)),
+            VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DSetVectorReduce(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            VectorExpression::Reference(ReferenceExpression::Variable(1)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_set_min_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(1);
+        let expression = ElementTableExpression::Table2DVectorSetReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+            SetExpression::Reference(ReferenceExpression::Constant(set)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DVectorSetReduce(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(1)),
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_min_x_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(1);
+        let expression = ElementTableExpression::Table2DReduceX(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Constant(set)),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DReduceX(
+            ElementOperator::Min,
+            0,
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_min_y_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(1);
+        let expression = ElementTableExpression::Table2DReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            SetExpression::Reference(ReferenceExpression::Constant(set)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            SetExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_min_x_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table2DVectorReduceX(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduceX(
+            ElementOperator::Min,
+            0,
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_2d_vector_min_y_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table2DVectorReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table2DVectorReduceY(
+            ElementOperator::Min,
+            0,
+            ElementExpression::Constant(0),
+            VectorExpression::Reference(ReferenceExpression::Variable(0)),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_3d_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table3D(
+            0,
+            ElementExpression::Constant(0),
+            ElementExpression::Constant(0),
+            ElementExpression::Constant(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table3D(
+            0,
+            ElementExpression::Constant(0),
+            ElementExpression::Constant(0),
+            ElementExpression::Variable(0),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_3d_min_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(2);
+        let expression = ElementTableExpression::Table3DReduce(
+            ElementOperator::Min,
+            0,
+            ArgumentExpression::Element(ElementExpression::Constant(0)),
+            ArgumentExpression::Set(SetExpression::Reference(ReferenceExpression::Constant(set))),
+            ArgumentExpression::Vector(VectorExpression::Reference(ReferenceExpression::Constant(
+                vec![0, 1],
+            ))),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(10)
+        );
+
+        let expression = ElementTableExpression::Table3DReduce(
+            ElementOperator::Min,
+            0,
+            ArgumentExpression::Element(ElementExpression::Constant(0)),
+            ArgumentExpression::Set(SetExpression::Reference(ReferenceExpression::Variable(0))),
+            ArgumentExpression::Vector(VectorExpression::Reference(ReferenceExpression::Variable(
+                1,
+            ))),
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_simplify() {
+        let registry = generate_registry();
+
+        let expression = ElementTableExpression::Table(
+            0,
+            vec![
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(1),
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(0),
+            ],
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(100)
+        );
+
+        let expression = ElementTableExpression::Table(
+            0,
+            vec![
+                ElementExpression::Constant(0),
+                ElementExpression::Constant(1),
+                ElementExpression::Constant(0),
+                ElementExpression::Variable(0),
+            ],
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+
+    #[test]
+    fn table_min_simplify() {
+        let registry = generate_registry();
+
+        let mut set = Set::with_capacity(3);
+        set.insert(0);
+        set.insert(2);
+        let expression = ElementTableExpression::TableReduce(
+            ElementOperator::Min,
+            0,
+            vec![
+                ArgumentExpression::Element(ElementExpression::Constant(0)),
+                ArgumentExpression::Element(ElementExpression::Constant(1)),
+                ArgumentExpression::Set(SetExpression::Complement(Box::new(
+                    SetExpression::Complement(Box::new(SetExpression::Reference(
+                        ReferenceExpression::Constant(set),
+                    ))),
+                ))),
+                ArgumentExpression::Vector(VectorExpression::Reverse(Box::new(
+                    VectorExpression::Reference(ReferenceExpression::Constant(vec![0, 1])),
+                ))),
+            ],
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            ElementTableExpression::Constant(100)
+        );
+
+        let expression = ElementTableExpression::TableReduce(
+            ElementOperator::Min,
+            0,
+            vec![
+                ArgumentExpression::Element(ElementExpression::Constant(0)),
+                ArgumentExpression::Element(ElementExpression::Constant(1)),
+                ArgumentExpression::Element(ElementExpression::Constant(0)),
+                ArgumentExpression::Vector(VectorExpression::Reference(
+                    ReferenceExpression::Variable(0),
+                )),
+            ],
+        );
+        assert_eq!(
+            expression.simplify(&registry, &registry.integer_tables),
+            expression
+        );
+    }
+}

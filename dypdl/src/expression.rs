@@ -5,6 +5,8 @@ mod condition;
 mod continuous_expression;
 mod continuous_vector_expression;
 mod element_expression;
+mod element_operator;
+mod element_table_expression;
 mod integer_expression;
 mod integer_vector_expression;
 mod numeric_operator;
@@ -22,6 +24,8 @@ pub use condition::{ComparisonOperator, Condition, IfThenElse};
 pub use continuous_expression::ContinuousExpression;
 pub use continuous_vector_expression::ContinuousVectorExpression;
 pub use element_expression::ElementExpression;
+pub use element_operator::ElementOperator;
+pub use element_table_expression::ElementTableExpression;
 pub use integer_expression::IntegerExpression;
 pub use integer_vector_expression::IntegerVectorExpression;
 pub use numeric_operator::{

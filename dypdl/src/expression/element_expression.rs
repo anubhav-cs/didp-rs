@@ -1,8 +1,11 @@
+use super::argument_expression::ArgumentExpression;
 use super::condition::{Condition, IfThenElse};
+use super::element_table_expression::ElementTableExpression;
 use super::numeric_operator::{BinaryOperator, MaxMin};
+use super::element_operator::{ElementOperator};
 use super::reference_expression::ReferenceExpression;
-use super::table_expression::TableExpression;
 use super::vector_expression::VectorExpression;
+use crate::prelude::SetExpression;
 use crate::state::{ElementResourceVariable, ElementVariable, StateInterface};
 use crate::state_functions::{StateFunctionCache, StateFunctions};
 use crate::table_data::{Table1DHandle, Table2DHandle, Table3DHandle, TableHandle};
@@ -32,7 +35,7 @@ pub enum ElementExpression {
     /// An item in a vector expression.
     At(Box<VectorExpression>, Box<ElementExpression>),
     /// A constant in a element table.
-    Table(Box<TableExpression<Element>>),
+    Table(Box<ElementTableExpression<Element>>),
     /// If-then-else expression, which returns the first one if the condition holds and the second one otherwise.
     If(
         Box<Condition>,
@@ -304,9 +307,79 @@ impl Table1DHandle<Element> {
     where
         ElementExpression: From<T>,
     {
-        ElementExpression::Table(Box::new(TableExpression::Table1D(
+        ElementExpression::Table(Box::new(ElementTableExpression::Table1D(
             self.id(),
             ElementExpression::from(x),
+        )))
+    }
+
+        /// Returns the maximum of constants over a set expression in a 1D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_1d("table", vec![2usize, 3usize]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.max(variable);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     3,
+    /// );
+    /// ```
+    #[inline]
+    pub fn max<T>(&self, x: T) -> ElementExpression
+    where
+        SetExpression: From<T>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table1DReduce(
+            ElementOperator::Max,
+            self.id(),
+            SetExpression::from(x),
+        )))
+    }
+
+    /// Returns the minimum of constants over a set expression in a 1D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_1d("table", vec![2usize, 3usize]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.min(variable);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     2,
+    /// );
+    /// ```
+    #[inline]
+    pub fn min<T>(&self, x: T) -> ElementExpression
+    where
+        SetExpression: From<T>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table1DReduce(
+            ElementOperator::Min,
+            self.id(),
+            SetExpression::from(x),
         )))
     }
 }
@@ -340,10 +413,232 @@ impl Table2DHandle<Element> {
         ElementExpression: From<T>,
         ElementExpression: From<U>,
     {
-        ElementExpression::Table(Box::new(TableExpression::Table2D(
+        ElementExpression::Table(Box::new(ElementTableExpression::Table2D(
             self.id(),
             ElementExpression::from(x),
             ElementExpression::from(y),
+        )))
+    }
+
+    /// Returns the maximum of constants over a set expression in a 2D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_2d("table", vec![vec![2usize, 3usize], vec![4usize, 5usize]]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let x = model.add_set_variable("x", object_type, set).unwrap();
+    /// let y = model.add_element_variable("y", object_type, 0).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.max_x(x, y);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     4,
+    /// );
+    #[inline]
+    pub fn max_x<T, U>(&self, x: T, y: U) -> ElementExpression
+    where
+        SetExpression: From<T>,
+        ElementExpression: From<U>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table2DReduceX(
+            ElementOperator::Max,
+            self.id(),
+            SetExpression::from(x),
+            ElementExpression::from(y),
+        )))
+    }
+
+    /// Returns the maximum of constants over a set expression in a 2D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_2d("table", vec![vec![2usize, 3usize], vec![4usize, 5usize]]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let x = model.add_element_variable("x", object_type, 0).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let y = model.add_set_variable("y", object_type, set).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.max_y(x, y);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     3,
+    /// );
+    #[inline]
+    pub fn max_y<T, U>(&self, x: T, y: U) -> ElementExpression
+    where
+        ElementExpression: From<T>,
+        SetExpression: From<U>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table2DReduceY(
+            ElementOperator::Max,
+            self.id(),
+            ElementExpression::from(x),
+            SetExpression::from(y),
+        )))
+    }
+
+    /// Returns the maximum of constants over two set expressions in a 2D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_2d("table", vec![vec![2usize, 3usize], vec![4usize, 5usize]]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let x = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let y = model.add_set_variable("y", object_type, x.clone()).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.max(x, y);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     5,
+    /// );
+    /// ```
+    #[inline]
+    pub fn max<T, U>(&self, x: T, y: U) -> ElementExpression
+    where
+        SetExpression: From<T>,
+        SetExpression: From<U>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table2DReduce(
+            ElementOperator::Max,
+            self.id(),
+            SetExpression::from(x),
+            SetExpression::from(y),
+        )))
+    }
+
+    /// Returns the minimum of constants over a set expression in a 2D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_2d("table", vec![vec![2usize, 3usize], vec![4usize, 5usize]]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let x = model.add_set_variable("x", object_type, set).unwrap();
+    /// let y = model.add_element_variable("y", object_type, 0).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.min_x(x, y);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     2,
+    /// );
+    #[inline]
+    pub fn min_x<T, U>(&self, x: T, y: U) -> ElementExpression
+    where
+        SetExpression: From<T>,
+        ElementExpression: From<U>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table2DReduceX(
+            ElementOperator::Min,
+            self.id(),
+            SetExpression::from(x),
+            ElementExpression::from(y),
+        )))
+    }
+
+    /// Returns the minimum of constants over a set expression in a 2D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_2d("table", vec![vec![2usize, 3usize], vec![4usize, 5usize]]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let x = model.add_element_variable("x", object_type, 0).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let y = model.add_set_variable("y", object_type, set).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.min_y(x, y);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,    
+    ///     ),
+    ///     2,
+    /// );
+    #[inline]
+    pub fn min_y<T, U>(&self, x: T, y: U) -> ElementExpression
+    where
+        ElementExpression: From<T>,
+        SetExpression: From<U>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table2DReduceY(
+            ElementOperator::Min,
+            self.id(),
+            ElementExpression::from(x),
+            SetExpression::from(y),
+        )))
+    }
+
+    /// Returns the minimum of constants over two set expressions in a 2D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_2d("table", vec![vec![2usize, 3usize], vec![4usize, 5usize]]).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let x = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let y = model.add_set_variable("y", object_type, x.clone()).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.min(x, y);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     2,
+    /// );
+    /// ```
+    #[inline]
+    pub fn min<T, U>(&self, x: T, y: U) -> ElementExpression
+    where
+        SetExpression: From<T>,
+        SetExpression: From<U>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table2DReduce(
+            ElementOperator::Min,
+            self.id(),
+            SetExpression::from(x),
+            SetExpression::from(y),
         )))
     }
 }
@@ -381,11 +676,113 @@ impl Table3DHandle<Element> {
         ElementExpression: From<U>,
         ElementExpression: From<V>,
     {
-        ElementExpression::Table(Box::new(TableExpression::Table3D(
+        ElementExpression::Table(Box::new(ElementTableExpression::Table3D(
             self.id(),
             ElementExpression::from(x),
             ElementExpression::from(y),
             ElementExpression::from(z),
+        )))
+    }
+        /// Returns the maximum of constants over set expressions in a 3D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_3d(
+    ///     "table",
+    ///     vec![vec![vec![2usize, 3usize], vec![4usize, 5usize]], vec![vec![6usize, 7usize], vec![8usize, 9usize]]]
+    /// ).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let set_variable = model.add_set_variable("set", object_type, set.clone()).unwrap();
+    /// let element_variable = model.add_element_variable("element", object_type, 0).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.max(set_variable, element_variable, 1);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     7,
+    /// );
+    ///
+    /// let expression = table.max(set, set_variable, set_variable);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     9,
+    /// );
+    /// ```
+    #[inline]
+    pub fn max<T, U, V>(&self, x: T, y: U, z: V) -> ElementExpression
+    where
+        ArgumentExpression: From<T>,
+        ArgumentExpression: From<U>,
+        ArgumentExpression: From<V>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table3DReduce(
+            ElementOperator::Max,
+            self.id(),
+            ArgumentExpression::from(x),
+            ArgumentExpression::from(y),
+            ArgumentExpression::from(z),
+        )))
+    }
+
+    /// Returns the minimum of constants over set expressions in a 3D integer table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let table = model.add_table_3d(
+    ///     "table",
+    ///     vec![vec![vec![2usize, 3usize], vec![4usize, 5usize]], vec![vec![6usize, 7usize], vec![8usize, 9usize]]]
+    /// ).unwrap();
+    /// let object_type = model.add_object_type("object", 2).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let set_variable = model.add_set_variable("set", object_type, set.clone()).unwrap();
+    /// let element_variable = model.add_element_variable("element", object_type, 0).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = table.min(set_variable, element_variable, 1);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     3,
+    /// );
+    ///
+    /// let expression = table.min(set, set_variable, set_variable);
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     2,
+    /// );
+    /// ```
+    #[inline]
+    pub fn min<T, U, V>(&self, x: T, y: U, z: V) -> ElementExpression
+    where
+        ArgumentExpression: From<T>,
+        ArgumentExpression: From<U>,
+        ArgumentExpression: From<V>,
+    {
+        ElementExpression::Table(Box::new(ElementTableExpression::Table3DReduce(
+            ElementOperator::Min,
+            self.id(),
+            ArgumentExpression::from(x),
+            ArgumentExpression::from(y),
+            ArgumentExpression::from(z),
         )))
     }
 }
@@ -427,7 +824,7 @@ impl TableHandle<Element> {
         ElementExpression: From<T>,
     {
         let indices = indices.into_iter().map(ElementExpression::from).collect();
-        ElementExpression::Table(Box::new(TableExpression::Table(self.id(), indices)))
+        ElementExpression::Table(Box::new(ElementTableExpression::Table(self.id(), indices)))
     }
 }
 
@@ -590,7 +987,7 @@ impl ElementExpression {
                 vector => vector.eval(state, function_cache, state_functions, registry)
                     [i.eval(state, function_cache, state_functions, registry)],
             },
-            Self::Table(table) => *table.eval(
+            Self::Table(table) => table.eval(
                 state,
                 function_cache,
                 state_functions,
@@ -632,7 +1029,7 @@ impl ElementExpression {
                 (x, y) => Self::BinaryOperation(op.clone(), Box::new(x), Box::new(y)),
             },
             Self::Table(table) => match table.simplify(registry, &registry.element_tables) {
-                TableExpression::Constant(value) => Self::Constant(value),
+                ElementTableExpression::Constant(value) => Self::Constant(value),
                 expression => Self::Table(Box::new(expression)),
             },
             Self::If(condition, x, y) => match condition.simplify(registry) {
@@ -2054,7 +2451,7 @@ mod tests {
         let t = t.unwrap();
         assert_eq!(
             Table1DHandle::<Element>::element(&t, 0),
-            ElementExpression::Table(Box::new(TableExpression::Table1D(
+            ElementExpression::Table(Box::new(ElementTableExpression::Table1D(
                 t.id(),
                 ElementExpression::Constant(0)
             )))
@@ -2065,7 +2462,7 @@ mod tests {
         let t = t.unwrap();
         assert_eq!(
             Table2DHandle::<Element>::element(&t, 0, 0),
-            ElementExpression::Table(Box::new(TableExpression::Table2D(
+            ElementExpression::Table(Box::new(ElementTableExpression::Table2D(
                 t.id(),
                 ElementExpression::Constant(0),
                 ElementExpression::Constant(0),
@@ -2077,7 +2474,7 @@ mod tests {
         let t = t.unwrap();
         assert_eq!(
             Table3DHandle::<Element>::element(&t, 0, 0, 0),
-            ElementExpression::Table(Box::new(TableExpression::Table3D(
+            ElementExpression::Table(Box::new(ElementTableExpression::Table3D(
                 t.id(),
                 ElementExpression::Constant(0),
                 ElementExpression::Constant(0),
@@ -2090,7 +2487,7 @@ mod tests {
         let t = t.unwrap();
         assert_eq!(
             TableHandle::<Element>::element(&t, vec![0, 0, 0, 0]),
-            ElementExpression::Table(Box::new(TableExpression::Table(
+            ElementExpression::Table(Box::new(ElementTableExpression::Table(
                 t.id(),
                 vec![
                     ElementExpression::Constant(0),
@@ -2501,7 +2898,7 @@ mod tests {
         let state_functions = StateFunctions::default();
         let mut function_cache = StateFunctionCache::new(&state_functions);
         let registry = generate_registry();
-        let expression = ElementExpression::Table(Box::new(TableExpression::Constant(0)));
+        let expression = ElementExpression::Table(Box::new(ElementTableExpression::Constant(0)));
         assert_eq!(
             expression.eval(&state, &mut function_cache, &state_functions, &registry),
             0
@@ -2616,12 +3013,12 @@ mod tests {
     #[test]
     fn element_table_simplify() {
         let registry = generate_registry();
-        let expression = ElementExpression::Table(Box::new(TableExpression::Constant(0)));
+        let expression = ElementExpression::Table(Box::new(ElementTableExpression::Constant(0)));
         assert_eq!(
             expression.simplify(&registry),
             ElementExpression::Constant(0)
         );
-        let expression = ElementExpression::Table(Box::new(TableExpression::Table1D(
+        let expression = ElementExpression::Table(Box::new(ElementTableExpression::Table1D(
             0,
             ElementExpression::Variable(0),
         )));
