@@ -425,6 +425,14 @@ impl ToYamlString for expression::ElementExpression {
                 eexp1_str = eexp1.to_yaml_string(state_data, state_functions, table_registry)?,
                 eexp2_str = eexp2.to_yaml_string(state_data, state_functions, table_registry)?
             )),
+            Self::SmallestElement(sexp) => Ok(format!(
+                "|{sexp_str}|",
+                sexp_str = sexp.to_yaml_string(state_data, state_functions, table_registry)?
+            )),
+            Self::LargestElement(sexp) => Ok(format!(
+                "|{sexp_str}|",
+                sexp_str = sexp.to_yaml_string(state_data, state_functions, table_registry)?
+            )),
             Self::Table(texp) => texp.to_yaml_string(state_data, state_functions, table_registry),
             Self::If(cond, eexp1, eexp2) => Ok(format!(
                 "(if {cond_str} {eexp1_str} {eexp2_str})",

@@ -1037,6 +1037,48 @@ impl SetExprPy {
         IntExprPy(self.clone().0.len())
     }
 
+    /// Returns the smallest element of a set.
+    ///
+    /// Returns
+    /// -------
+    /// ElementExpr
+    ///     The largest element.
+    ///
+    /// Examples
+    /// --------
+    /// >>> import didppy as dp
+    /// >>> model = dp.Model()
+    /// >>> state = model.target_state
+    /// >>> obj = model.add_object_type(number=4)
+    /// >>> const = model.create_set_const(object_type=obj, value=[0, 1])
+    /// >>> expr = dp.SetExpr(const)
+    /// >>> expr.min().eval(state, model)
+    /// 0
+    pub fn min(&self) -> ElementExprPy {
+        ElementExprPy(self.clone().0.min())
+    }
+
+    /// Returns the largest element of a set.
+    ///
+    /// Returns
+    /// -------
+    /// ElementExpr
+    ///     The largest element.
+    ///
+    /// Examples
+    /// --------
+    /// >>> import didppy as dp
+    /// >>> model = dp.Model()
+    /// >>> state = model.target_state
+    /// >>> obj = model.add_object_type(number=4)
+    /// >>> const = model.create_set_const(object_type=obj, value=[0, 1])
+    /// >>> expr = dp.SetExpr(const)
+    /// >>> expr.max().eval(state, model)
+    /// 1
+    pub fn max(&self) -> ElementExprPy {
+        ElementExprPy(self.clone().0.max())
+    }
+
     /// Returns a condition checking if the set is empty.
     ///
     /// Returns
@@ -1584,6 +1626,46 @@ impl SetVarPy {
     /// 2
     fn len(&self) -> IntExprPy {
         IntExprPy(self.0.len())
+    }
+
+    /// Returns the smallest element of a set.
+    ///
+    /// Returns
+    /// -------
+    /// ElementExpr
+    ///     The smalles element.
+    ///
+    /// Examples
+    /// --------
+    /// >>> import didppy as dp
+    /// >>> model = dp.Model()
+    /// >>> obj = model.add_object_type(number=4)
+    /// >>> var = model.add_set_var(object_type=obj, target=[0, 1])
+    /// >>> state = model.target_state
+    /// >>> var.min().eval(state, model)
+    /// 0
+    fn min(&self) -> ElementExprPy {
+        ElementExprPy(self.0.min())
+    }
+
+    /// Returns the largest element of a set.
+    ///
+    /// Returns
+    /// -------
+    /// ElementExpr
+    ///     The largest element.
+    ///
+    /// Examples
+    /// --------
+    /// >>> import didppy as dp
+    /// >>> model = dp.Model()
+    /// >>> obj = model.add_object_type(number=4)
+    /// >>> var = model.add_set_var(object_type=obj, target=[0, 1])
+    /// >>> state = model.target_state
+    /// >>> var.max().eval(state, model)
+    /// 1
+    fn max(&self) -> ElementExprPy {
+        ElementExprPy(self.0.max())
     }
 
     /// Returns a condition checking if the set is empty.

@@ -3391,6 +3391,12 @@ impl CheckExpression<expression::ElementExpression> for Model {
                 self.check_expression(x.as_ref(), allow_cost)?;
                 self.check_expression(y.as_ref(), allow_cost)
             }
+            expression::ElementExpression::SmallestElement(x) => {
+                self.check_expression(x.as_ref(), allow_cost)
+            },
+            expression::ElementExpression::LargestElement(x) => {
+                self.check_expression(x.as_ref(), allow_cost)
+            },
             expression::ElementExpression::Last(vector) => {
                 self.check_expression(vector.as_ref(), allow_cost)
             }

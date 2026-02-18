@@ -5,7 +5,7 @@ use super::numeric_operator::{BinaryOperator, MaxMin};
 use super::element_operator::{ElementOperator};
 use super::reference_expression::ReferenceExpression;
 use super::vector_expression::VectorExpression;
-use crate::prelude::SetExpression;
+use crate::prelude::{SetExpression, SetVariable};
 use crate::state::{ElementResourceVariable, ElementVariable, StateInterface};
 use crate::state_functions::{StateFunctionCache, StateFunctions};
 use crate::table_data::{Table1DHandle, Table2DHandle, Table3DHandle, TableHandle};
@@ -30,6 +30,10 @@ pub enum ElementExpression {
         Box<ElementExpression>,
         Box<ElementExpression>,
     ),
+    /// Smallest element in a set expression
+    SmallestElement(Box<SetExpression>),
+    /// Largest element in a set expression
+    LargestElement(Box<SetExpression>),
     /// The last value of a vector expression.
     Last(Box<VectorExpression>),
     /// An item in a vector expression.
@@ -381,6 +385,122 @@ impl Table1DHandle<Element> {
             self.id(),
             SetExpression::from(x),
         )))
+    }
+}
+
+impl SetExpression {
+    /// Returns an expression representing the smalless element of a set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let object_type = model.add_object_type("object", 4).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = SetExpression::from(set);
+    /// let expression = expression.min();
+    ///
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     0,
+    /// );
+    /// ```
+    #[inline]
+    pub fn min(self) -> ElementExpression {
+        ElementExpression::SmallestElement(Box::new(self))
+    }
+
+    /// Returns an expression representing the largest element of a set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let object_type = model.add_object_type("object", 4).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = SetExpression::from(set);
+    /// let expression = expression.max();
+    ///
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     1,
+    /// );
+    /// ```
+    #[inline]
+    pub fn max(self) -> ElementExpression {
+        ElementExpression::LargestElement(Box::new(self))
+    }
+}
+
+impl SetVariable {
+    /// Returns an expression representing the smallest element of a set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let object_type = model.add_object_type("object", 4).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = variable.min();
+    ///
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     0,
+    /// );
+    /// ```
+    #[inline]
+    pub fn min(self) -> ElementExpression {
+        ElementExpression::SmallestElement(Box::new(SetExpression::from(self)))
+    }
+
+    /// Returns an expression representing the largest element of a set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dypdl::prelude::*;
+    ///
+    /// let mut model = Model::default();
+    /// let object_type = model.add_object_type("object", 4).unwrap();
+    /// let set = model.create_set(object_type, &[0, 1]).unwrap();
+    /// let variable = model.add_set_variable("variable", object_type, set).unwrap();
+    /// let state = model.target.clone();
+    /// let mut function_cache = StateFunctionCache::new(&model.state_functions);
+    ///
+    /// let expression = variable.max();
+    ///
+    /// assert_eq!(
+    ///     expression.eval(
+    ///         &state, &mut function_cache, &model.state_functions, &model.table_registry,
+    ///     ),
+    ///     1,
+    /// );
+    /// ```
+    #[inline]
+    pub fn max(self) -> ElementExpression {
+        ElementExpression::LargestElement(Box::new(SetExpression::from(self)))
     }
 }
 
@@ -969,6 +1089,14 @@ impl ElementExpression {
                 x.eval(state, function_cache, state_functions, registry),
                 y.eval(state, function_cache, state_functions, registry),
             ),
+            ElementExpression::SmallestElement(expression) => {
+                let set = expression.eval(state, function_cache, state_functions, registry);
+                set.ones().next().unwrap() as Element
+            },
+            ElementExpression::LargestElement(expression) => {
+                let set = expression.eval(state, function_cache, state_functions, registry);
+                set.ones().last().unwrap() as Element
+            },
             Self::Last(vector) => match vector.as_ref() {
                 VectorExpression::Reference(vector) => *vector
                     .eval(state, function_cache, state_functions, registry)
